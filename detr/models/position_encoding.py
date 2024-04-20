@@ -20,7 +20,7 @@ class PositionEmbeddingSine(nn.Module):
         super().__init__()
         self.num_pos_feats = num_pos_feats
         self.temperature = temperature
-        self.normalize = normalize
+        self.normalize = normalize#bool, true or false
         if scale is not None and normalize is False:
             raise ValueError("normalize should be True if scale is passed")
         if scale is None:

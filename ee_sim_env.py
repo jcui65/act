@@ -2,44 +2,44 @@ import numpy as np
 import collections
 import os
 
-from constants import DT, XML_DIR, START_ARM_POSE
-from constants import PUPPET_GRIPPER_POSITION_CLOSE
-from constants import PUPPET_GRIPPER_POSITION_UNNORMALIZE_FN
+from constants import DT, XML_DIR, START_ARM_POSE#XML_DIR in line 40 in constants.py
+from constants import PUPPET_GRIPPER_POSITION_CLOSE#
+from constants import PUPPET_GRIPPER_POSITION_UNNORMALIZE_FN#FN means it is a function
 from constants import PUPPET_GRIPPER_POSITION_NORMALIZE_FN
 from constants import PUPPET_GRIPPER_VELOCITY_NORMALIZE_FN
 
-from utils import sample_box_pose, sample_insertion_pose
+from utils import sample_box_pose, sample_insertion_pose#line 133, 144 in utils.py
 from dm_control import mujoco
 from dm_control.rl import control
 from dm_control.suite import base
 
 import IPython
-e = IPython.embed
+e = IPython.embed#it is just a testing and debugging tool, right?
 
 
 def make_ee_sim_env(task_name):
     """
     Environment for simulated robot bi-manual manipulation, with end-effector control.
-    Action space:      [left_arm_pose (7),             # position and quaternion for end effector
+    Action space:      [left_arm_pose (7),             # position and quaternion for end effector#, 3 positions, and 4 quaternions
                         left_gripper_positions (1),    # normalized gripper position (0: close, 1: open)
-                        right_arm_pose (7),            # position and quaternion for end effector
+                        right_arm_pose (7),            # position and quaternion for end effector#, thus it is in the Cartesian Frame
                         right_gripper_positions (1),]  # normalized gripper position (0: close, 1: open)
 
-    Observation space: {"qpos": Concat[ left_arm_qpos (6),         # absolute joint position
+    Observation space: {"qpos": Concat[ left_arm_qpos (6),         # absolute joint position#, question: is it in joint space or Cartesian space
                                         left_gripper_position (1),  # normalized gripper position (0: close, 1: open)
                                         right_arm_qpos (6),         # absolute joint position
                                         right_gripper_qpos (1)]     # normalized gripper position (0: close, 1: open)
-                        "qvel": Concat[ left_arm_qvel (6),         # absolute joint velocity (rad)
+                        "qvel": Concat[ left_arm_qvel (6),         # absolute joint velocity (rad)#so it seems in joint space
                                         left_gripper_velocity (1),  # normalized gripper velocity (pos: opening, neg: closing)
                                         right_arm_qvel (6),         # absolute joint velocity (rad)
                                         right_gripper_qvel (1)]     # normalized gripper velocity (pos: opening, neg: closing)
-                        "images": {"main": (480x640x3)}        # h, w, c, dtype='uint8'
+                        "images": {"main": (480x640x3)}        # h, w, c, dtype='uint8'#, is only top view provided in the simulation?
     """
     if 'sim_transfer_cube' in task_name:
-        xml_path = os.path.join(XML_DIR, f'bimanual_viperx_ee_transfer_cube.xml')
-        physics = mujoco.Physics.from_xml_path(xml_path)
-        task = TransferCubeEETask(random=False)
-        env = control.Environment(physics, task, time_limit=20, control_timestep=DT,
+        xml_path = os.path.join(XML_DIR, f'bimanual_viperx_ee_transfer_cube.xml')#I know where it is
+        physics = mujoco.Physics.from_xml_path(xml_path)#you get the physics of the simulation environment from this xml file!
+        task = TransferCubeEETask(random=False)#see line 153 in this file
+        env = control.Environment(physics, task, time_limit=20, control_timestep=DT,#20 seconds, right?
                                   n_sub_steps=None, flat_observation=False)
     elif 'sim_insertion' in task_name:
         xml_path = os.path.join(XML_DIR, f'bimanual_viperx_ee_insertion.xml')
@@ -49,33 +49,33 @@ def make_ee_sim_env(task_name):
                                   n_sub_steps=None, flat_observation=False)
     else:
         raise NotImplementedError
-    return env
+    return env#it is a class! the thing to be returned is a class!
 
-class BimanualViperXEETask(base.Task):
+class BimanualViperXEETask(base.Task):#base class for the following 2 classes
     def __init__(self, random=None):
         super().__init__(random=random)
 
-    def before_step(self, action, physics):
-        a_len = len(action) // 2
-        action_left = action[:a_len]
-        action_right = action[a_len:]
+    def before_step(self, action, physics):#initialization#overwrite the before_step in its base class
+        a_len = len(action) // 2#divide into 2? yeah!
+        action_left = action[:a_len]#first 8#that is the action, not the qpos!!!
+        action_right = action[a_len:]#last 8#
 
         # set mocap position and quat
         # left
-        np.copyto(physics.data.mocap_pos[0], action_left[:3])
-        np.copyto(physics.data.mocap_quat[0], action_left[3:7])
+        np.copyto(physics.data.mocap_pos[0], action_left[:3])#pose of the action, mocap means motion capture
+        np.copyto(physics.data.mocap_quat[0], action_left[3:7])#quaternion,#get the desired position and quaternion, then change it to desired joint angles
         # right
-        np.copyto(physics.data.mocap_pos[1], action_right[:3])
-        np.copyto(physics.data.mocap_quat[1], action_right[3:7])
-
+        np.copyto(physics.data.mocap_pos[1], action_right[:3])#mocap is shown in the xml file, which is the initial mocap, right?
+        np.copyto(physics.data.mocap_quat[1], action_right[3:7])#you copy this to the physics, whose low level controller will implement it
+        #just make this connection:mocap=motioncap=action=leader=ctrl
         # set gripper
-        g_left_ctrl = PUPPET_GRIPPER_POSITION_UNNORMALIZE_FN(action_left[7])
-        g_right_ctrl = PUPPET_GRIPPER_POSITION_UNNORMALIZE_FN(action_right[7])
-        np.copyto(physics.data.ctrl, np.array([g_left_ctrl, -g_left_ctrl, g_right_ctrl, -g_right_ctrl]))
+        g_left_ctrl = PUPPET_GRIPPER_POSITION_UNNORMALIZE_FN(action_left[7])#left_gripper_positions, scalar
+        g_right_ctrl = PUPPET_GRIPPER_POSITION_UNNORMALIZE_FN(action_right[7])#right_gripper_positions#action_right[7] is normalized!
+        np.copyto(physics.data.ctrl, np.array([g_left_ctrl, -g_left_ctrl, g_right_ctrl, -g_right_ctrl]))#an end effector has 2 claws moving in opposite directions!
 
     def initialize_robots(self, physics):
         # reset joint position
-        physics.named.data.qpos[:16] = START_ARM_POSE
+        physics.named.data.qpos[:16] = START_ARM_POSE#initialize the arm to the initial position
 
         # reset mocap to align with end effector
         # to obtain these numbers:
@@ -86,43 +86,43 @@ class BimanualViperXEETask(base.Task):
         np.copyto(physics.data.mocap_pos[0], [-0.31718881, 0.5, 0.29525084])
         np.copyto(physics.data.mocap_quat[0], [1, 0, 0, 0])
         # right
-        np.copyto(physics.data.mocap_pos[1], np.array([0.31718881, 0.49999888, 0.29525084]))
+        np.copyto(physics.data.mocap_pos[1], np.array([0.31718881, 0.49999888, 0.29525084]))#why not also 0.5?
         np.copyto(physics.data.mocap_quat[1],  [1, 0, 0, 0])
 
         # reset gripper control
-        close_gripper_control = np.array([
+        close_gripper_control = np.array([#always close initially
             PUPPET_GRIPPER_POSITION_CLOSE,
             -PUPPET_GRIPPER_POSITION_CLOSE,
             PUPPET_GRIPPER_POSITION_CLOSE,
-            -PUPPET_GRIPPER_POSITION_CLOSE,
-        ])
-        np.copyto(physics.data.ctrl, close_gripper_control)
+            -PUPPET_GRIPPER_POSITION_CLOSE,#this is not normalized
+        ])#this is not normalized
+        np.copyto(physics.data.ctrl, close_gripper_control)#does seem close at the initial position/time step
 
     def initialize_episode(self, physics):
         """Sets the state of the environment at the start of each episode."""
         super().initialize_episode(physics)
 
     @staticmethod
-    def get_qpos(physics):
-        qpos_raw = physics.data.qpos.copy()
-        left_qpos_raw = qpos_raw[:8]
-        right_qpos_raw = qpos_raw[8:16]
-        left_arm_qpos = left_qpos_raw[:6]
+    def get_qpos(physics):#get q position
+        qpos_raw = physics.data.qpos.copy()#so it has 16 dimensions!
+        left_qpos_raw = qpos_raw[:8]#left position, 8 dimensional, 6+2=6+1+1
+        right_qpos_raw = qpos_raw[8:16]#right position#So I think this 8-dim thing has different meaning than the 8 dim arm pose(7)+gripper position(1)
+        left_arm_qpos = left_qpos_raw[:6]#which includes 6+1
         right_arm_qpos = right_qpos_raw[:6]
-        left_gripper_qpos = [PUPPET_GRIPPER_POSITION_NORMALIZE_FN(left_qpos_raw[6])]
-        right_gripper_qpos = [PUPPET_GRIPPER_POSITION_NORMALIZE_FN(right_qpos_raw[6])]
-        return np.concatenate([left_arm_qpos, left_gripper_qpos, right_arm_qpos, right_gripper_qpos])
+        left_gripper_qpos = [PUPPET_GRIPPER_POSITION_NORMALIZE_FN(left_qpos_raw[6])]#from unnormalized to normalized gripper position between 0 and 1
+        right_gripper_qpos = [PUPPET_GRIPPER_POSITION_NORMALIZE_FN(right_qpos_raw[6])]#the puppet is the large ViperX robot. I can infer from this
+        return np.concatenate([left_arm_qpos, left_gripper_qpos, right_arm_qpos, right_gripper_qpos])#first 7 left, last 7 right!
 
     @staticmethod
     def get_qvel(physics):
         qvel_raw = physics.data.qvel.copy()
-        left_qvel_raw = qvel_raw[:8]
+        left_qvel_raw = qvel_raw[:8]#8 dimensional, 3+3+2
         right_qvel_raw = qvel_raw[8:16]
-        left_arm_qvel = left_qvel_raw[:6]
+        left_arm_qvel = left_qvel_raw[:6]#7 dimensional? I think it is 6
         right_arm_qvel = right_qvel_raw[:6]
-        left_gripper_qvel = [PUPPET_GRIPPER_VELOCITY_NORMALIZE_FN(left_qvel_raw[6])]
+        left_gripper_qvel = [PUPPET_GRIPPER_VELOCITY_NORMALIZE_FN(left_qvel_raw[6])]#qvel of the gripper normalized
         right_gripper_qvel = [PUPPET_GRIPPER_VELOCITY_NORMALIZE_FN(right_qvel_raw[6])]
-        return np.concatenate([left_arm_qvel, left_gripper_qvel, right_arm_qvel, right_gripper_qvel])
+        return np.concatenate([left_arm_qvel, left_gripper_qvel, right_arm_qvel, right_gripper_qvel])#14 dimensional
 
     @staticmethod
     def get_env_state(physics):
@@ -131,11 +131,11 @@ class BimanualViperXEETask(base.Task):
     def get_observation(self, physics):
         # note: it is important to do .copy()
         obs = collections.OrderedDict()
-        obs['qpos'] = self.get_qpos(physics)
+        obs['qpos'] = self.get_qpos(physics)#14 dimension, right? right 7*2 or not right 8*2
         obs['qvel'] = self.get_qvel(physics)
         obs['env_state'] = self.get_env_state(physics)
         obs['images'] = dict()
-        obs['images']['top'] = physics.render(height=480, width=640, camera_id='top')
+        obs['images']['top'] = physics.render(height=480, width=640, camera_id='top')#render the image in the simulator
         obs['images']['angle'] = physics.render(height=480, width=640, camera_id='angle')
         obs['images']['vis'] = physics.render(height=480, width=640, camera_id='front_close')
         # used in scripted policy to obtain starting pose
@@ -143,38 +143,38 @@ class BimanualViperXEETask(base.Task):
         obs['mocap_pose_right'] = np.concatenate([physics.data.mocap_pos[1], physics.data.mocap_quat[1]]).copy()
 
         # used when replaying joint trajectory
-        obs['gripper_ctrl'] = physics.data.ctrl.copy()
+        obs['gripper_ctrl'] = physics.data.ctrl.copy()#pay attention to it, OK?#So it is 4d, right?
         return obs
 
     def get_reward(self, physics):
         raise NotImplementedError
 
 
-class TransferCubeEETask(BimanualViperXEETask):
+class TransferCubeEETask(BimanualViperXEETask):#EE means end effector
     def __init__(self, random=None):
         super().__init__(random=random)
-        self.max_reward = 4
+        self.max_reward = 4#what do you mean?
 
     def initialize_episode(self, physics):
         """Sets the state of the environment at the start of each episode."""
-        self.initialize_robots(physics)
+        self.initialize_robots(physics)#line 76
         # randomize box position
-        cube_pose = sample_box_pose()
-        box_start_idx = physics.model.name2id('red_box_joint', 'joint')
+        cube_pose = sample_box_pose()#7 dimensional
+        box_start_idx = physics.model.name2id('red_box_joint', 'joint')#get the id of the box states
         np.copyto(physics.data.qpos[box_start_idx : box_start_idx + 7], cube_pose)
         # print(f"randomized cube position to {cube_position}")
 
-        super().initialize_episode(physics)
+        super().initialize_episode(physics)#the initialize_episode method in the base/parent class
 
     @staticmethod
     def get_env_state(physics):
         env_state = physics.data.qpos.copy()[16:]
-        return env_state
+        return env_state#seems not implemented
 
     def get_reward(self, physics):
         # return whether left gripper is holding the box
         all_contact_pairs = []
-        for i_contact in range(physics.data.ncon):
+        for i_contact in range(physics.data.ncon):#what is this for?
             id_geom_1 = physics.data.contact[i_contact].geom1
             id_geom_2 = physics.data.contact[i_contact].geom2
             name_geom_1 = physics.model.id2name(id_geom_1, 'geom')
@@ -194,7 +194,7 @@ class TransferCubeEETask(BimanualViperXEETask):
         if touch_left_gripper: # attempted transfer
             reward = 3
         if touch_left_gripper and not touch_table: # successful transfer
-            reward = 4
+            reward = 4#that is not enough!!!
         return reward
 
 
@@ -207,9 +207,9 @@ class InsertionEETask(BimanualViperXEETask):
         """Sets the state of the environment at the start of each episode."""
         self.initialize_robots(physics)
         # randomize peg and socket position
-        peg_pose, socket_pose = sample_insertion_pose()
+        peg_pose, socket_pose = sample_insertion_pose()#not difficult to understand
         id2index = lambda j_id: 16 + (j_id - 16) * 7 # first 16 is robot qpos, 7 is pose dim # hacky
-
+        #16 or 14? this is a question
         peg_start_id = physics.model.name2id('red_peg_joint', 'joint')
         peg_start_idx = id2index(peg_start_id)
         np.copyto(physics.data.qpos[peg_start_idx : peg_start_idx + 7], peg_pose)
@@ -253,7 +253,7 @@ class InsertionEETask(BimanualViperXEETask):
                            ("red_peg", "socket-2") in all_contact_pairs or \
                            ("red_peg", "socket-3") in all_contact_pairs or \
                            ("red_peg", "socket-4") in all_contact_pairs
-        pin_touched = ("red_peg", "pin") in all_contact_pairs
+        pin_touched = ("red_peg", "pin") in all_contact_pairs#what is pin?
 
         reward = 0
         if touch_left_gripper and touch_right_gripper: # touch both

@@ -43,7 +43,7 @@ def get_args_parser():
     parser.add_argument('--dropout', default=0.1, type=float,
                         help="Dropout applied in the transformer")
     parser.add_argument('--nheads', default=8, type=int, # will be overridden
-                        help="Number of attention heads inside the transformer's attentions")
+                        help="Number of attention heads inside the transformer's attentions")#it is an attention thing!
     parser.add_argument('--num_queries', default=400, type=int, # will be overridden
                         help="Number of query slots")
     parser.add_argument('--pre_norm', action='store_true')
@@ -67,27 +67,27 @@ def get_args_parser():
     return parser
 
 
-def build_ACT_model_and_optimizer(args_override):
+def build_ACT_model_and_optimizer(args_override):#args_override seems a dictionary
     parser = argparse.ArgumentParser('DETR training and evaluation script', parents=[get_args_parser()])
     args = parser.parse_args()
 
     for k, v in args_override.items():
-        setattr(args, k, v)
+        setattr(args, k, v)#this is the overriding process
 
-    model = build_ACT_model(args)
-    model.cuda()
+    model = build_ACT_model(args)#you get the model already from here
+    model.cuda()#send it to cuda
 
     param_dicts = [
         {"params": [p for n, p in model.named_parameters() if "backbone" not in n and p.requires_grad]},
         {
             "params": [p for n, p in model.named_parameters() if "backbone" in n and p.requires_grad],
-            "lr": args.lr_backbone,
+            "lr": args.lr_backbone,#backbone-specific learning rate
         },
     ]
-    optimizer = torch.optim.AdamW(param_dicts, lr=args.lr,
+    optimizer = torch.optim.AdamW(param_dicts, lr=args.lr,#the learning rate parameter from args
                                   weight_decay=args.weight_decay)
 
-    return model, optimizer
+    return model, optimizer#it will return a model and a optimizer
 
 
 def build_CNNMLP_model_and_optimizer(args_override):
@@ -95,7 +95,7 @@ def build_CNNMLP_model_and_optimizer(args_override):
     args = parser.parse_args()
 
     for k, v in args_override.items():
-        setattr(args, k, v)
+        setattr(args, k, v)#the same as before
 
     model = build_CNNMLP_model(args)
     model.cuda()

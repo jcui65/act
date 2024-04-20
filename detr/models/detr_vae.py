@@ -7,21 +7,25 @@ from torch import nn
 from torch.autograd import Variable
 from .backbone import build_backbone
 from .transformer import build_transformer, TransformerEncoder, TransformerEncoderLayer
-
+import sys
+#from act import constants_xht
+import sys
+sys.path.append('../../')
+from constants_xht import NUMBEROFARMS,DOFLEFT,DOFRIGHT
 import numpy as np
 
 import IPython
 e = IPython.embed
 
 
-def reparametrize(mu, logvar):
-    std = logvar.div(2).exp()
-    eps = Variable(std.data.new(std.size()).normal_())
-    return mu + std * eps
+def reparametrize(mu, logvar):#reparameterization trick
+    std = logvar.div(2).exp()#get the std
+    eps = Variable(std.data.new(std.size()).normal_())#get some noise
+    return mu + std * eps#get the sample
 
 
-def get_sinusoid_encoding_table(n_position, d_hid):
-    def get_position_angle_vec(position):
+def get_sinusoid_encoding_table(n_position, d_hid):#
+    def get_position_angle_vec(position):#what is this?
         return [position / np.power(10000, 2 * (hid_j // 2) / d_hid) for hid_j in range(d_hid)]
 
     sinusoid_table = np.array([get_position_angle_vec(pos_i) for pos_i in range(n_position)])
@@ -44,21 +48,27 @@ class DETRVAE(nn.Module):
             aux_loss: True if auxiliary decoding losses (loss at each decoder layer) are to be used.
         """
         super().__init__()
-        self.num_queries = num_queries
+        if NUMBEROFARMS == 2:
+            self.sd = DOFRIGHT + DOFLEFT
+        elif NUMBEROFARMS == 1:
+            self.sd = DOFRIGHT
+        else:
+            self.sd = 14
+        self.num_queries = num_queries#it is an object detector
         self.camera_names = camera_names
         self.transformer = transformer
         self.encoder = encoder
         hidden_dim = transformer.d_model
         self.action_head = nn.Linear(hidden_dim, state_dim)
         self.is_pad_head = nn.Linear(hidden_dim, 1)
-        self.query_embed = nn.Embedding(num_queries, hidden_dim)
+        self.query_embed = nn.Embedding(num_queries, hidden_dim)#what does it mean?
         if backbones is not None:
             self.input_proj = nn.Conv2d(backbones[0].num_channels, hidden_dim, kernel_size=1)
             self.backbones = nn.ModuleList(backbones)
-            self.input_proj_robot_state = nn.Linear(14, hidden_dim)
+            self.input_proj_robot_state = nn.Linear(self.sd, hidden_dim)#self.sd used to be 14
         else:
             # input_dim = 14 + 7 # robot_state + env_state
-            self.input_proj_robot_state = nn.Linear(14, hidden_dim)
+            self.input_proj_robot_state = nn.Linear(self.sd, hidden_dim)#self.sd=14?#using robot state rather than images, right?
             self.input_proj_env_state = nn.Linear(7, hidden_dim)
             self.pos = torch.nn.Embedding(2, hidden_dim)
             self.backbones = None
@@ -66,8 +76,8 @@ class DETRVAE(nn.Module):
         # encoder extra parameters
         self.latent_dim = 32 # final size of latent z # TODO tune
         self.cls_embed = nn.Embedding(1, hidden_dim) # extra cls token embedding
-        self.encoder_action_proj = nn.Linear(14, hidden_dim) # project action to embedding
-        self.encoder_joint_proj = nn.Linear(14, hidden_dim)  # project qpos to embedding
+        self.encoder_action_proj = nn.Linear(self.sd, hidden_dim) # project action to embedding
+        self.encoder_joint_proj = nn.Linear(self.sd, hidden_dim)  # project qpos to embedding
         self.latent_proj = nn.Linear(hidden_dim, self.latent_dim*2) # project hidden state to latent std, var
         self.register_buffer('pos_table', get_sinusoid_encoding_table(1+1+num_queries, hidden_dim)) # [CLS], qpos, a_seq
 
@@ -75,7 +85,7 @@ class DETRVAE(nn.Module):
         self.latent_out_proj = nn.Linear(self.latent_dim, hidden_dim) # project latent sample to embedding
         self.additional_pos_embed = nn.Embedding(2, hidden_dim) # learned position embedding for proprio and latent
 
-    def forward(self, qpos, image, env_state, actions=None, is_pad=None):
+    def forward(self, qpos, image, env_state, actions=None, is_pad=None):#yes this is the forward method!
         """
         qpos: batch, qpos_dim
         image: batch, num_cam, channel, height, width
@@ -86,14 +96,14 @@ class DETRVAE(nn.Module):
         bs, _ = qpos.shape
         ### Obtain latent z from action sequence
         if is_training:
-            # project action sequence to embedding dim, and concat with a CLS token
-            action_embed = self.encoder_action_proj(actions) # (bs, seq, hidden_dim)
-            qpos_embed = self.encoder_joint_proj(qpos)  # (bs, hidden_dim)
+            # project action sequence to embedding dim, and concat with a CLS token#, this is shown in the paper
+            action_embed = self.encoder_action_proj(actions) # (bs, seq, hidden_dim)#
+            qpos_embed = self.encoder_joint_proj(qpos)  # (bs, hidden_dim)#, it is the joint poses
             qpos_embed = torch.unsqueeze(qpos_embed, axis=1)  # (bs, 1, hidden_dim)
             cls_embed = self.cls_embed.weight # (1, hidden_dim)
             cls_embed = torch.unsqueeze(cls_embed, axis=0).repeat(bs, 1, 1) # (bs, 1, hidden_dim)
-            encoder_input = torch.cat([cls_embed, qpos_embed, action_embed], axis=1) # (bs, seq+1, hidden_dim)
-            encoder_input = encoder_input.permute(1, 0, 2) # (seq+1, bs, hidden_dim)
+            encoder_input = torch.cat([cls_embed, qpos_embed, action_embed], axis=1) # (bs, seq+1, hidden_dim)#, no images needed
+            encoder_input = encoder_input.permute(1, 0, 2) # (seq+1, bs, hidden_dim)#
             # do not mask cls token
             cls_joint_is_pad = torch.full((bs, 2), False).to(qpos.device) # False: not a padding
             is_pad = torch.cat([cls_joint_is_pad, is_pad], axis=1)  # (bs, seq+1)
@@ -106,14 +116,14 @@ class DETRVAE(nn.Module):
             latent_info = self.latent_proj(encoder_output)
             mu = latent_info[:, :self.latent_dim]
             logvar = latent_info[:, self.latent_dim:]
-            latent_sample = reparametrize(mu, logvar)
-            latent_input = self.latent_out_proj(latent_sample)
+            latent_sample = reparametrize(mu, logvar)#you get the sampled z
+            latent_input = self.latent_out_proj(latent_sample)#z
         else:
             mu = logvar = None
-            latent_sample = torch.zeros([bs, self.latent_dim], dtype=torch.float32).to(qpos.device)
-            latent_input = self.latent_out_proj(latent_sample)
+            latent_sample = torch.zeros([bs, self.latent_dim], dtype=torch.float32).to(qpos.device)#0
+            latent_input = self.latent_out_proj(latent_sample)#0
 
-        if self.backbones is not None:
+        if self.backbones is not None:#with image observation
             # Image observation features and position embeddings
             all_cam_features = []
             all_cam_pos = []
@@ -127,9 +137,9 @@ class DETRVAE(nn.Module):
             proprio_input = self.input_proj_robot_state(qpos)
             # fold camera dimension into width dimension
             src = torch.cat(all_cam_features, axis=3)
-            pos = torch.cat(all_cam_pos, axis=3)
+            pos = torch.cat(all_cam_pos, axis=3)#so below is image,none,query_embed,camera pos,z,joints,additional
             hs = self.transformer(src, None, self.query_embed.weight, pos, latent_input, proprio_input, self.additional_pos_embed.weight)[0]
-        else:
+        else:#hs is the transformer decoder!
             qpos = self.input_proj_robot_state(qpos)
             env_state = self.input_proj_env_state(env_state)
             transformer_input = torch.cat([qpos, env_state], axis=1) # seq length = 2
@@ -166,8 +176,8 @@ class CNNMLP(nn.Module):
                 backbone_down_projs.append(down_proj)
             self.backbone_down_projs = nn.ModuleList(backbone_down_projs)
 
-            mlp_in_dim = 768 * len(backbones) + 14
-            self.mlp = mlp(input_dim=mlp_in_dim, hidden_dim=1024, output_dim=14, hidden_depth=2)
+            mlp_in_dim = 768 * len(backbones) + self.sd#14
+            self.mlp = mlp(input_dim=mlp_in_dim, hidden_dim=1024, output_dim=self.sd, hidden_depth=2)
         else:
             raise NotImplementedError
 
@@ -193,7 +203,7 @@ class CNNMLP(nn.Module):
             flattened_features.append(cam_feature.reshape([bs, -1]))
         flattened_features = torch.cat(flattened_features, axis=1) # 768 each
         features = torch.cat([flattened_features, qpos], axis=1) # qpos: 14
-        a_hat = self.mlp(features)
+        a_hat = self.mlp(features)#image features and qposes as the inputs
         return a_hat
 
 
@@ -212,7 +222,7 @@ def mlp(input_dim, hidden_dim, output_dim, hidden_depth):
 def build_encoder(args):
     d_model = args.hidden_dim # 256
     dropout = args.dropout # 0.1
-    nhead = args.nheads # 8
+    nhead = args.nheads # 8#, it is a transformer thing!
     dim_feedforward = args.dim_feedforward # 2048
     num_encoder_layers = args.enc_layers # 4 # TODO shared with VAE decoder
     normalize_before = args.pre_norm # False
@@ -227,7 +237,13 @@ def build_encoder(args):
 
 
 def build(args):
-    state_dim = 14 # TODO hardcode
+    if NUMBEROFARMS==2:
+        state_dim=DOFRIGHT+DOFLEFT
+    elif NUMBEROFARMS==1:
+        state_dim=DOFRIGHT
+    else:
+        state_dim=14
+    #state_dim = 14 # TODO hardcode
 
     # From state
     # backbone = None # from state for now, no need for conv nets
@@ -236,9 +252,9 @@ def build(args):
     backbone = build_backbone(args)
     backbones.append(backbone)
 
-    transformer = build_transformer(args)
+    transformer = build_transformer(args)#transformer as the decoder
 
-    encoder = build_encoder(args)
+    encoder = build_encoder(args)#which is also a transformer
 
     model = DETRVAE(
         backbones,
@@ -255,7 +271,13 @@ def build(args):
     return model
 
 def build_cnnmlp(args):
-    state_dim = 14 # TODO hardcode
+    if NUMBEROFARMS==2:
+        state_dim=DOFRIGHT+DOFLEFT
+    elif NUMBEROFARMS==1:
+        state_dim=DOFRIGHT
+    else:
+        state_dim=14
+    #state_dim = 14 # TODO hardcode
 
     # From state
     # backbone = None # from state for now, no need for conv nets

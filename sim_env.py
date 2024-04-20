@@ -7,8 +7,8 @@ from dm_control.rl import control
 from dm_control.suite import base
 
 from constants import DT, XML_DIR, START_ARM_POSE
-from constants import PUPPET_GRIPPER_POSITION_UNNORMALIZE_FN
-from constants import MASTER_GRIPPER_POSITION_NORMALIZE_FN
+from constants import PUPPET_GRIPPER_POSITION_UNNORMALIZE_FN#it is a function
+from constants import MASTER_GRIPPER_POSITION_NORMALIZE_FN#
 from constants import PUPPET_GRIPPER_POSITION_NORMALIZE_FN
 from constants import PUPPET_GRIPPER_VELOCITY_NORMALIZE_FN
 
@@ -16,11 +16,11 @@ import IPython
 e = IPython.embed
 
 BOX_POSE = [None] # to be changed from outside
-
+#it seems a global variable
 def make_sim_env(task_name):
     """
     Environment for simulated robot bi-manual manipulation, with joint position control
-    Action space:      [left_arm_qpos (6),             # absolute joint position
+    Action space:      [left_arm_qpos (6),             # absolute joint position#, certainly in the joint space
                         left_gripper_positions (1),    # normalized gripper position (0: close, 1: open)
                         right_arm_qpos (6),            # absolute joint position
                         right_gripper_positions (1),]  # normalized gripper position (0: close, 1: open)
@@ -35,10 +35,10 @@ def make_sim_env(task_name):
                                         right_gripper_qvel (1)]     # normalized gripper velocity (pos: opening, neg: closing)
                         "images": {"main": (480x640x3)}        # h, w, c, dtype='uint8'
     """
-    if 'sim_transfer_cube' in task_name:
-        xml_path = os.path.join(XML_DIR, f'bimanual_viperx_transfer_cube.xml')
+    if 'sim_transfer_cube' in task_name:#action space的量纲与observation space的qpos的量纲是一样的，说明action性质上说其实就是qpos
+        xml_path = os.path.join(XML_DIR, f'bimanual_viperx_transfer_cube.xml')#no ee, which means it is in the joint space!
         physics = mujoco.Physics.from_xml_path(xml_path)
-        task = TransferCubeTask(random=False)
+        task = TransferCubeTask(random=False)#line 121
         env = control.Environment(physics, task, time_limit=20, control_timestep=DT,
                                   n_sub_steps=None, flat_observation=False)
     elif 'sim_insertion' in task_name:
@@ -56,35 +56,35 @@ class BimanualViperXTask(base.Task):
         super().__init__(random=random)
 
     def before_step(self, action, physics):
-        left_arm_action = action[:6]
-        right_arm_action = action[7:7+6]
-        normalized_left_gripper_action = action[6]
+        left_arm_action = action[:6]#not including 6, the 6 joint angles for the left arm
+        right_arm_action = action[7:7+6]#not including 7+6, the 6 joint angles for the right arm
+        normalized_left_gripper_action = action[6]#the left gripper position/state normalized
         normalized_right_gripper_action = action[7+6]
 
-        left_gripper_action = PUPPET_GRIPPER_POSITION_UNNORMALIZE_FN(normalized_left_gripper_action)
+        left_gripper_action = PUPPET_GRIPPER_POSITION_UNNORMALIZE_FN(normalized_left_gripper_action)#normalized to not normalized
         right_gripper_action = PUPPET_GRIPPER_POSITION_UNNORMALIZE_FN(normalized_right_gripper_action)
 
-        full_left_gripper_action = [left_gripper_action, -left_gripper_action]
-        full_right_gripper_action = [right_gripper_action, -right_gripper_action]
+        full_left_gripper_action = [left_gripper_action, -left_gripper_action]#one claw to the left, the other to the right on the end effector
+        full_right_gripper_action = [right_gripper_action, -right_gripper_action]#unnormalized
 
         env_action = np.concatenate([left_arm_action, full_left_gripper_action, right_arm_action, full_right_gripper_action])
-        super().before_step(env_action, physics)
+        super().before_step(env_action, physics)#so the dimension is: 6+2+6+2=8+8=16!!!
         return
 
     def initialize_episode(self, physics):
         """Sets the state of the environment at the start of each episode."""
-        super().initialize_episode(physics)
+        super().initialize_episode(physics)#the base class's method
 
     @staticmethod
     def get_qpos(physics):
-        qpos_raw = physics.data.qpos.copy()
-        left_qpos_raw = qpos_raw[:8]
+        qpos_raw = physics.data.qpos.copy()#
+        left_qpos_raw = qpos_raw[:8]#8 dim, 6joints+2gripper. Among the 2 gripper states, one is the minus of the other
         right_qpos_raw = qpos_raw[8:16]
-        left_arm_qpos = left_qpos_raw[:6]
+        left_arm_qpos = left_qpos_raw[:6]#6dim
         right_arm_qpos = right_qpos_raw[:6]
-        left_gripper_qpos = [PUPPET_GRIPPER_POSITION_NORMALIZE_FN(left_qpos_raw[6])]
-        right_gripper_qpos = [PUPPET_GRIPPER_POSITION_NORMALIZE_FN(right_qpos_raw[6])]
-        return np.concatenate([left_arm_qpos, left_gripper_qpos, right_arm_qpos, right_gripper_qpos])
+        left_gripper_qpos = [PUPPET_GRIPPER_POSITION_NORMALIZE_FN(left_qpos_raw[6])]#1dim
+        right_gripper_qpos = [PUPPET_GRIPPER_POSITION_NORMALIZE_FN(right_qpos_raw[6])]#normalized
+        return np.concatenate([left_arm_qpos, left_gripper_qpos, right_arm_qpos, right_gripper_qpos])#(6+1)*2
 
     @staticmethod
     def get_qvel(physics):
@@ -93,25 +93,27 @@ class BimanualViperXTask(base.Task):
         right_qvel_raw = qvel_raw[8:16]
         left_arm_qvel = left_qvel_raw[:6]
         right_arm_qvel = right_qvel_raw[:6]
-        left_gripper_qvel = [PUPPET_GRIPPER_VELOCITY_NORMALIZE_FN(left_qvel_raw[6])]
-        right_gripper_qvel = [PUPPET_GRIPPER_VELOCITY_NORMALIZE_FN(right_qvel_raw[6])]
+        left_gripper_qvel = [PUPPET_GRIPPER_VELOCITY_NORMALIZE_FN(left_qvel_raw[6])]#1 dim
+        right_gripper_qvel = [PUPPET_GRIPPER_VELOCITY_NORMALIZE_FN(right_qvel_raw[6])]#normalized
         return np.concatenate([left_arm_qvel, left_gripper_qvel, right_arm_qvel, right_gripper_qvel])
 
     @staticmethod
-    def get_env_state(physics):
+    def get_env_state(physics):#like boxes, pigs, sockets, etc.
         raise NotImplementedError
 
     def get_observation(self, physics):
         obs = collections.OrderedDict()
         obs['qpos'] = self.get_qpos(physics)
+        #print(obs['qpos'].shape)
         obs['qvel'] = self.get_qvel(physics)
-        obs['env_state'] = self.get_env_state(physics)
+        obs['env_state'] = self.get_env_state(physics)#it is not used when using joint angles
         obs['images'] = dict()
         obs['images']['top'] = physics.render(height=480, width=640, camera_id='top')
         obs['images']['angle'] = physics.render(height=480, width=640, camera_id='angle')
         obs['images']['vis'] = physics.render(height=480, width=640, camera_id='front_close')
-
-        return obs
+        #print("action,qpos,qvel,top,angle,vis:",obs['qpos'].shape, obs['qvel'].shape,obs['env_state'].shape,obs['images']['top'].shape, obs['images']['angle'].shape, obs['images']['vis'].shape)
+        #action,qpos,qvel,top,angle,vis: (14,) (14,) (14,) (480, 640, 3) (480, 640, 3) (480, 640, 3)
+        return obs#now there is no gripper things!
 
     def get_reward(self, physics):
         # return whether left gripper is holding the box
@@ -131,7 +133,7 @@ class TransferCubeTask(BimanualViperXTask):
             physics.named.data.qpos[:16] = START_ARM_POSE
             np.copyto(physics.data.ctrl, START_ARM_POSE)
             assert BOX_POSE[0] is not None
-            physics.named.data.qpos[-7:] = BOX_POSE[0]
+            physics.named.data.qpos[-7:] = BOX_POSE[0]#one box having 7 state variables, 3 for positions, 4 for quaternions
             # print(f"{BOX_POSE=}")
         super().initialize_episode(physics)
 
@@ -177,10 +179,10 @@ class InsertionTask(BimanualViperXTask):
         # TODO Notice: this function does not randomize the env configuration. Instead, set BOX_POSE from outside
         # reset qpos, control and box position
         with physics.reset_context():
-            physics.named.data.qpos[:16] = START_ARM_POSE
+            physics.named.data.qpos[:16] = START_ARM_POSE#(6+2)*2
             np.copyto(physics.data.ctrl, START_ARM_POSE)
             assert BOX_POSE[0] is not None
-            physics.named.data.qpos[-7*2:] = BOX_POSE[0] # two objects
+            physics.named.data.qpos[-7*2:] = BOX_POSE[0] # two objects, each has 3 position and 4 quaternion variables
             # print(f"{BOX_POSE=}")
         super().initialize_episode(physics)
 
@@ -241,13 +243,13 @@ def get_action(master_bot_left, master_bot_right):
     normalized_right_pos = MASTER_GRIPPER_POSITION_NORMALIZE_FN(right_gripper_pos)
     action[6] = normalized_left_pos
     action[7+6] = normalized_right_pos
-    return action
+    return action#14 dimensional
 
 def test_sim_teleop():
     """ Testing teleoperation in sim with ALOHA. Requires hardware and ALOHA repo to work. """
     from interbotix_xs_modules.arm import InterbotixManipulatorXS
 
-    BOX_POSE[0] = [0.2, 0.5, 0.05, 1, 0, 0, 0]
+    BOX_POSE[0] = [0.2, 0.5, 0.05, 1, 0, 0, 0]#JUST A SIMPLE TEST SCRIPT
 
     # source of data
     master_bot_left = InterbotixManipulatorXS(robot_model="wx250s", group_name="arm", gripper_name="gripper",

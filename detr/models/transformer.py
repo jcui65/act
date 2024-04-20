@@ -17,7 +17,7 @@ from torch import nn, Tensor
 import IPython
 e = IPython.embed
 
-class Transformer(nn.Module):
+class Transformer(nn.Module):#almost the official transformer!
 
     def __init__(self, d_model=512, nhead=8, num_encoder_layers=6,
                  num_decoder_layers=6, dim_feedforward=2048, dropout=0.1,
@@ -27,7 +27,7 @@ class Transformer(nn.Module):
 
         encoder_layer = TransformerEncoderLayer(d_model, nhead, dim_feedforward,
                                                 dropout, activation, normalize_before)
-        encoder_norm = nn.LayerNorm(d_model) if normalize_before else None
+        encoder_norm = nn.LayerNorm(d_model) if normalize_before else None#normalize
         self.encoder = TransformerEncoder(encoder_layer, num_encoder_layers, encoder_norm)
 
         decoder_layer = TransformerDecoderLayer(d_model, nhead, dim_feedforward,
@@ -36,7 +36,7 @@ class Transformer(nn.Module):
         self.decoder = TransformerDecoder(decoder_layer, num_decoder_layers, decoder_norm,
                                           return_intermediate=return_intermediate_dec)
 
-        self._reset_parameters()
+        self._reset_parameters()#just a few lines later!
 
         self.d_model = d_model
         self.nhead = nhead
@@ -50,7 +50,7 @@ class Transformer(nn.Module):
         # TODO flatten only when input has H and W
         if len(src.shape) == 4: # has H and W
             # flatten NxCxHxW to HWxNxC
-            bs, c, h, w = src.shape
+            bs, c, h, w = src.shape#bs means batch size
             src = src.flatten(2).permute(2, 0, 1)
             pos_embed = pos_embed.flatten(2).permute(2, 0, 1).repeat(1, bs, 1)
             query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)
@@ -70,7 +70,7 @@ class Transformer(nn.Module):
             query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)
 
         tgt = torch.zeros_like(query_embed)
-        memory = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)
+        memory = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)#transformer encoder, this is using its forward method!
         hs = self.decoder(tgt, memory, memory_key_padding_mask=mask,
                           pos=pos_embed, query_pos=query_embed)
         hs = hs.transpose(1, 2)
@@ -91,7 +91,7 @@ class TransformerEncoder(nn.Module):
         output = src
 
         for layer in self.layers:
-            output = layer(output, src_mask=mask,
+            output = layer(output, src_mask=mask,#by default the mask is none
                            src_key_padding_mask=src_key_padding_mask, pos=pos)
 
         if self.norm is not None:
@@ -130,7 +130,7 @@ class TransformerDecoder(nn.Module):
                 intermediate.append(self.norm(output))
 
         if self.norm is not None:
-            output = self.norm(output)
+            output = self.norm(output)#normalization
             if self.return_intermediate:
                 intermediate.pop()
                 intermediate.append(output)
@@ -172,17 +172,17 @@ class TransformerEncoderLayer(nn.Module):
         src2 = self.self_attn(q, k, value=src, attn_mask=src_mask,
                               key_padding_mask=src_key_padding_mask)[0]
         src = src + self.dropout1(src2)
-        src = self.norm1(src)
+        src = self.norm1(src)#normalize at the back
         src2 = self.linear2(self.dropout(self.activation(self.linear1(src))))
         src = src + self.dropout2(src2)
-        src = self.norm2(src)
+        src = self.norm2(src)#normalize at the back
         return src
 
     def forward_pre(self, src,
                     src_mask: Optional[Tensor] = None,
                     src_key_padding_mask: Optional[Tensor] = None,
                     pos: Optional[Tensor] = None):
-        src2 = self.norm1(src)
+        src2 = self.norm1(src)#normalize at the front
         q = k = self.with_pos_embed(src2, pos)
         src2 = self.self_attn(q, k, value=src2, attn_mask=src_mask,
                               key_padding_mask=src_key_padding_mask)[0]
@@ -196,7 +196,7 @@ class TransformerEncoderLayer(nn.Module):
                 src_mask: Optional[Tensor] = None,
                 src_key_padding_mask: Optional[Tensor] = None,
                 pos: Optional[Tensor] = None):
-        if self.normalize_before:
+        if self.normalize_before:#顾名思义
             return self.forward_pre(src, src_mask, src_key_padding_mask, pos)
         return self.forward_post(src, src_mask, src_key_padding_mask, pos)
 
@@ -246,7 +246,7 @@ class TransformerDecoderLayer(nn.Module):
         tgt = self.norm2(tgt)
         tgt2 = self.linear2(self.dropout(self.activation(self.linear1(tgt))))
         tgt = tgt + self.dropout3(tgt2)
-        tgt = self.norm3(tgt)
+        tgt = self.norm3(tgt)#post normalize
         return tgt
 
     def forward_pre(self, tgt, memory,
@@ -256,7 +256,7 @@ class TransformerDecoderLayer(nn.Module):
                     memory_key_padding_mask: Optional[Tensor] = None,
                     pos: Optional[Tensor] = None,
                     query_pos: Optional[Tensor] = None):
-        tgt2 = self.norm1(tgt)
+        tgt2 = self.norm1(tgt)#pre normalize
         q = k = self.with_pos_embed(tgt2, query_pos)
         tgt2 = self.self_attn(q, k, value=tgt2, attn_mask=tgt_mask,
                               key_padding_mask=tgt_key_padding_mask)[0]
@@ -287,7 +287,7 @@ class TransformerDecoderLayer(nn.Module):
 
 
 def _get_clones(module, N):
-    return nn.ModuleList([copy.deepcopy(module) for i in range(N)])
+    return nn.ModuleList([copy.deepcopy(module) for i in range(N)])#nn.ModuleList并没有定义一个网络，它只是将不同的模块储存在一起，这些模块之间并没有什么先后顺序可言。
 
 
 def build_transformer(args):
