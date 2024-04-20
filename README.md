@@ -88,3 +88,4 @@ For real-world data where things can be harder to model, train for at least 5000
 Please refer to [tuning tips](https://docs.google.com/document/d/1FVIZfoALXg_ZkYKaYVh-qOlaXveq5CtvJHXkY25eYhs/edit?usp=sharing) for more info.
 
 For XHT:
+If you want to use ACT for inference on the real robot in XHT, you can run pick_and_place_task_ACT.py while designating the following parameters.

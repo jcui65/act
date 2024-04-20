@@ -1,12 +1,13 @@
 import pathlib
 ###abstraction barrier
-NUMBEROFARMS=1#2#
-DOFLEFT=7
-DOFRIGHT=7
+NUMBEROFARMS=1#2# number of arms, either 1 or 2
+DOFLEFT=7#DOF of the left arm
+DOFRIGHT=7#DOF of the right arm
 IMAGEWIDTH=320#seems not important, as the network will know how to determine the size of the images?
-IMAGEHEIGHT=240
+IMAGEHEIGHT=240#
 ### Task parameters
 DATA_DIR = '/home/user/bagfilesxht/pick_and_place_rosbag/0413_rosbag/green'#/ff2'#'selfcollecteddata'#'/home/user/bagfilesxht2/pick_and_place_rosbag/0408_rosbag/left'#'selfcollecteddata'#'/home/user/bagfilesxht2/pick_and_place_rosbag/0407_rosbag'##'selfcollecteddata/sim_insertion_scripted'#jianning cui makes this change#'<put your data dir here>'
+#DATA_DIR is the directory of the data which will be used to train the networks
 SIM_TASK_CONFIGS = {#it is a dictionary with task name as the key and its configurations as the value
     'sim_transfer_cube_scripted':{
         'dataset_dir': DATA_DIR + '/sim_transfer_cube_scripted',

@@ -213,7 +213,7 @@ class RosNodeACT:
                     # all_time_actions[tt, tt:tt + num_queries] = all_actions  # 100 things, right?
                     # print("all_time_actions2.shape:", all_time_actions.shape)  # (500,600,14)#torch.Size([1228, 1328, 7]) also correct!#[[t], t:t])
                     # print("all_time_actions:",len(all_time_actions),len(all_time_actions[0]),len(all_time_actions[0][0]))#400 500 14
-                    if (self.tt >= num_queries - 1):
+                    if (self.tt >= num_queries - 1):#this is different from the original implementation of ACT and thus saves much space
                         rowindex = torch.arange(num_queries)
                         columnindex = (torch.arange(self.tt, self.tt - 100, -1)) % num_queries
                     else:
@@ -389,21 +389,21 @@ if __name__ == "__main__":
     #    "/home/user/work/checkpoints_trained/0409_right_pick_and_place.ckpt"
     #)#So it is an instantiation of the policy class!
     parser = argparse.ArgumentParser()
-    #parser.add_argument('--eval', action='store_true')#usually eval, right?
+    #parser.add_argument('--eval', action='store_true')#usually eval, right?#Since it is on real robot, then it will be eval, rather than train
     #parser.add_argument('--onscreen_render', action='store_true')#In simulation, I need to render it. But in real robots, I think I don't need this!
     parser.add_argument('--ckpt_dir', action='store', type=str, help='ckpt_dir', required=True)#need to get checkpoint directory
-    parser.add_argument('--policy_class', action='store', type=str, help='policy_class, capitalize', required=True)#normally ACT, but maybe can also try CNNMLP
-    parser.add_argument('--task_name', action='store', type=str, help='task_name', required=True)#this's important, and maybe can be incorporated with Shenhong's embedding!
-    #parser.add_argument('--batch_size', action='store', type=int, help='batch_size', required=True)#if just for eval, then no need to use this!
-    parser.add_argument('--seed', action='store', type=int, help='seed', required=True)#why need this during inference?
-    #parser.add_argument('--num_epochs', action='store', type=int, help='num_epochs', required=True)#only for training
-    #parser.add_argument('--lr', action='store', type=float, help='lr', required=True)#training only
+    parser.add_argument('--policy_class', action='store', type=str, help='policy_class, capitalize', required=True,default='ACT')#normally ACT, but maybe can also try CNNMLP
+    #parser.add_argument('--task_name', action='store', type=str, help='task_name', required=True)#this's important, and maybe can be incorporated with Shenhong's embedding!
+    parser.add_argument('--batch_size', action='store', type=int, help='batch_size', required=True)#if just for eval, then no need to use this!
+    #parser.add_argument('--seed', action='store', type=int, help='seed', required=True)#why need this during inference?
+    parser.add_argument('--num_epochs', action='store', type=int, help='num_epochs', required=True)#only for training
+    parser.add_argument('--lr', action='store', type=float, help='lr', required=True)#training only
 
     # for ACT
-    #parser.add_argument('--kl_weight', action='store', type=int, help='KL Weight', required=False)#training only
+    parser.add_argument('--kl_weight', action='store', type=int, help='KL Weight', required=False)#training only
     parser.add_argument('--chunk_size', action='store', type=int, help='chunk_size', required=False)#also test
-    #parser.add_argument('--hidden_dim', action='store', type=int, help='hidden_dim', required=False)#training only
-    #parser.add_argument('--dim_feedforward', action='store', type=int, help='dim_feedforward', required=False)#training only
+    parser.add_argument('--hidden_dim', action='store', type=int, help='hidden_dim', required=False)#training only
+    parser.add_argument('--dim_feedforward', action='store', type=int, help='dim_feedforward', required=False)#training only
     parser.add_argument('--temporal_agg', action='store_true')#also test
 
     args=vars(parser.parse_args())
@@ -419,13 +419,13 @@ if __name__ == "__main__":
     #then you load the configuration and the policy
     #replay_buffer = ReplayBuffer.create_from_path(output_file, mode='a')
 
-    set_seed(1)#so this is not critical anymore
+    #set_seed(1)#so this is not critical anymore
     # command line parameters
-    is_eval = args['eval']#eval or train
+    #is_eval = args['eval']#eval or train
     ckpt_dir = args['ckpt_dir']#
     policy_class = args['policy_class']#ACT or other baseline methods!
     #onscreen_render = args['onscreen_render']
-    task_name = args['task_name']#cube transfer, insertion, etc.
+    #task_name = args['task_name']#cube transfer, insertion, etc.
     #batch_size_train = args['batch_size']#8 default
     #batch_size_val = args['batch_size']#the val batchsize is the same as the train batch size
     #num_epochs = args['num_epochs']#2000 default
@@ -441,12 +441,12 @@ if __name__ == "__main__":
         from aloha_scripts.constants import TASK_CONFIGS
         task_config = TASK_CONFIGS[task_name]
     '''
-    from constants_xht import SIM_TASK_CONFIGS
-    task_config = SIM_TASK_CONFIGS[task_name]
+    #from constants_xht import SIM_TASK_CONFIGS
+    #task_config = SIM_TASK_CONFIGS[task_name]
     #dataset_dir = task_config['dataset_dir']#I just don't need this!
     #num_episodes = task_config['num_episodes']#50 default
     #episode_len = task_config['episode_len']#400 default
-    camera_names = task_config['camera_names']#it should be a list of camera_names#it seems that in simulation, it only contain one viewpoint, which is from the top!
+    #camera_names = task_config['camera_names']#it should be a list of camera_names#it seems that in simulation, it only contain one viewpoint, which is from the top!
 
     # fixed parameters
     if NUMBEROFARMS==2:
@@ -473,11 +473,11 @@ if __name__ == "__main__":
                          'enc_layers': enc_layers,#that is not modifyable
                          'dec_layers': dec_layers,#not modifyable
                          'nheads': nheads,#not modifyable
-                         'camera_names': camera_names,
+                         #'camera_names': camera_names,
                          }
     elif policy_class == 'CNNMLP':#
-        policy_config = {'lr': args['lr'], 'lr_backbone': lr_backbone, 'backbone' : backbone, 'num_queries': 1,#there is no action chunking in CNNMLP
-                         'camera_names': camera_names,}#training only
+        policy_config = {'lr': args['lr'], 'lr_backbone': lr_backbone, 'backbone' : backbone, 'num_queries': 1,}#there is no action chunking in CNNMLP
+                         #'camera_names': camera_names,}#training only
     else:
         raise NotImplementedError
     '''''' 
@@ -486,12 +486,12 @@ if __name__ == "__main__":
         'ckpt_dir': ckpt_dir,
         #'episode_len': episode_len,
         'state_dim': state_dim,#14 as shown in the paper
-        #'lr': args['lr'],
+        'lr': args['lr'],
         'policy_class': policy_class,
         #'onscreen_render': onscreen_render,
-        #'policy_config': policy_config,
-        'task_name': task_name,
-        'seed': args['seed'],
+        'policy_config': policy_config,
+        #'task_name': task_name,
+        #'seed': args['seed'],
         'temporal_agg': args['temporal_agg'],#is it a val thing or is it also a train thing?
         #'camera_names': camera_names,
         #'real_robot': not is_sim
@@ -500,7 +500,7 @@ if __name__ == "__main__":
 
 
 
-    set_seed(1000)
+    #set_seed(1000)
     ckpt_dir = config['ckpt_dir']
     state_dim = config['state_dim']
     #real_robot = config['real_robot']#not is_sim
