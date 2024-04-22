@@ -89,3 +89,4 @@ Please refer to [tuning tips](https://docs.google.com/document/d/1FVIZfoALXg_ZkY
 
 For XHT:
 If you want to use ACT for inference on the real robot in XHT, you can run pick_and_place_task_ACT.py while designating the following parameters.
+pick_and_place_task_ACT.py --ckpt_dir /your/directory/containing/the/checkpoint --policy_class ACT --kl_weight 10 --chunk_size 100 --hidden_dim 512 --dim_feedforward 3200 --lr 1e-5 --temporal_agg
