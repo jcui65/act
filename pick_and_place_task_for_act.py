@@ -192,60 +192,61 @@ class RosNodeACT:
                     #"dist_gripper": np.array(last_n_gripper),  # [-2:]),
                 }
                 camera_names=list(image_dict.keys())
-                qpos_numpy=np.asarray(last_n_qpos7)#from list to array
-                qpos = pre_process(
-                    qpos_numpy)  # normalization#qpos_numpy#because I didn't make the right preprocessing of the data!#
-                qpos = torch.from_numpy(qpos).float().cuda().unsqueeze(0)
-                # qpos_history[:, t] = qpos#I need to check the camera_names list to see what it contains
-                # curr_image = get_image(ts, camera_names)#camera_names contains all the cameras, get all images at ts
-                # I need to build the image_dict
-                curr_image = get_image_xht(image_dict, camera_names)  # , t)  #我是先装手还是先装body来着？
-                query_frequency = policy_config['num_queries']
-                #action = self.policy.infer(obs)#so obs is a dictionary of lists
-                #action=self.policy(qpos, image)
-                #self.tt means the time counts, each time the timer_callback is called, tt+=1. Is my way of counting the number of calls to timer_callback correct?
-                if self.tt % query_frequency == 0:  # the action only feeds in every query_frequency steps?
-                    all_actions = policy(qpos, curr_image)  # what does all_actions contain?
-                if temporal_agg:  # all_actions should have 100 in one of its dimension
-                    # print("num_queries",num_queries)#100 is correct!
-                    all_time_actions[self.tt % num_queries] = all_actions  # that line is overwritten!
-                    # all_time_actions[[tt], tt:tt + num_queries] = all_actions  # 100 things, right?
-                    # all_time_actions[tt, tt:tt + num_queries] = all_actions  # 100 things, right?
-                    # print("all_time_actions2.shape:", all_time_actions.shape)  # (500,600,14)#torch.Size([1228, 1328, 7]) also correct!#[[t], t:t])
-                    # print("all_time_actions:",len(all_time_actions),len(all_time_actions[0]),len(all_time_actions[0][0]))#400 500 14
-                    if (self.tt >= num_queries - 1):#this is different from the original implementation of ACT and thus saves much space
-                        rowindex = torch.arange(num_queries)
-                        columnindex = (torch.arange(self.tt, self.tt - 100, -1)) % num_queries
+                with torch.inference_mode():#顾名思义，inference
+                    qpos_numpy=np.asarray(last_n_qpos7)#from list to array
+                    qpos = pre_process(
+                        qpos_numpy)  # normalization#qpos_numpy#because I didn't make the right preprocessing of the data!#
+                    qpos = torch.from_numpy(qpos).float().cuda().unsqueeze(0)
+                    # qpos_history[:, t] = qpos#I need to check the camera_names list to see what it contains
+                    # curr_image = get_image(ts, camera_names)#camera_names contains all the cameras, get all images at ts
+                    # I need to build the image_dict
+                    curr_image = get_image_xht(image_dict, camera_names)  # , t)  #我是先装手还是先装body来着？
+                    query_frequency = policy_config['num_queries']
+                    #action = self.policy.infer(obs)#so obs is a dictionary of lists
+                    #action=self.policy(qpos, image)
+                    #self.tt means the time counts, each time the timer_callback is called, tt+=1. Is my way of counting the number of calls to timer_callback correct?
+                    if self.tt % query_frequency == 0:  # the action only feeds in every query_frequency steps?
+                        all_actions = policy(qpos, curr_image)  # what does all_actions contain?
+                    if temporal_agg:  # all_actions should have 100 in one of its dimension
+                        # print("num_queries",num_queries)#100 is correct!
+                        all_time_actions[self.tt % num_queries] = all_actions  # that line is overwritten!
+                        # all_time_actions[[tt], tt:tt + num_queries] = all_actions  # 100 things, right?
+                        # all_time_actions[tt, tt:tt + num_queries] = all_actions  # 100 things, right?
+                        # print("all_time_actions2.shape:", all_time_actions.shape)  # (500,600,14)#torch.Size([1228, 1328, 7]) also correct!#[[t], t:t])
+                        # print("all_time_actions:",len(all_time_actions),len(all_time_actions[0]),len(all_time_actions[0][0]))#400 500 14
+                        if (self.tt >= num_queries - 1):#this is different from the original implementation of ACT and thus saves much space
+                            rowindex = torch.arange(num_queries)
+                            columnindex = (torch.arange(self.tt, self.tt - 100, -1)) % num_queries
+                        else:
+                            rowindex = torch.arange(self.tt + 1)
+                            columnindex = torch.arange(self.tt, -1, -1)
+                        # actions_for_curr_step = all_time_actions[:, tt]  # num_queries is 100
+                        actions_for_curr_step = all_time_actions[rowindex, columnindex]  # num_queries is 100
+                        # print("actions_for_curr_step:", actions_for_curr_step)  #
+                        # print("actions_for_curr_step.shape:",actions_for_curr_step.shape)#(500,14)#torch.Size([1228, 7]) also correct!#print("size0,size1:",len(actions_for_curr_step),len(actions_for_curr_step[0]))#400,14#1228,7
+                        actions_populated = torch.all(actions_for_curr_step != 0,
+                                                    axis=1)  # it is a mask#operating on the dimension that is 14 or 7
+                        # print("actions_populated",actions_populated)
+                        # if(len(actions_populated)>0):#len(actions_populated)=400 always
+                        # print("actions_populated.shape:",actions_populated.shape)#(500)#torch.Size([1228]) also correct!#print("len(actions_populated),len(actions_populated[1]):",len(actions_populated),len(actions_populated[0]))#1228
+                        actions_for_curr_step = actions_for_curr_step[actions_populated]
+                        # if(len(actions_for_curr_step)>0):#actions_for_curr_step.shape=torch.Size([1-100, 14])#1-100 means from 1 to 100
+                        # print(f"t={tt},actions_for_curr_step.shape:",actions_for_curr_step.shape)#(1,14)-(100,14)#torch.Size([1228, 7]), correct!#print("tt,len(afcs),len(afcs[1]):",tt, len(actions_for_curr_step),actions_for_curr_step.shape)#,len(actions_for_curr_step[0]))
+                        # t,len(afcs),len(afcs[1]): 99 100 torch.Size([100, 14])#t,len(afcs),len(afcs[1]): 100 100 torch.Size([100, 14])
+                        # print("len(actions_for_curr_step)",len(actions_for_curr_step))
+                        exp_weights = np.exp(-k * np.arange(len(actions_for_curr_step)))
+                        # print("exp_weights.shape:", exp_weights.shape)  # (1,) to (100,)#(1,) to (100,)#correct!
+                        exp_weights = exp_weights / exp_weights.sum()  # normalize? Yeah, I think so
+                        exp_weights = torch.from_numpy(exp_weights).cuda().unsqueeze(dim=1)
+                        # print("exp_weights.shape2:", exp_weights.shape)  # (1,1) to (100,1)#(1,1) to (100,1), correct! because of the unsqueeze#
+                        raw_action = (actions_for_curr_step * exp_weights).sum(dim=0,
+                                                                            keepdim=True)  # kind of like convolution
+                        # print("raw_action.shape", raw_action.shape)  # (1,14)#torch.Size([1, 7]) correct!
                     else:
-                        rowindex = torch.arange(self.tt + 1)
-                        columnindex = torch.arange(self.tt, -1, -1)
-                    # actions_for_curr_step = all_time_actions[:, tt]  # num_queries is 100
-                    actions_for_curr_step = all_time_actions[rowindex, columnindex]  # num_queries is 100
-                    # print("actions_for_curr_step:", actions_for_curr_step)  #
-                    # print("actions_for_curr_step.shape:",actions_for_curr_step.shape)#(500,14)#torch.Size([1228, 7]) also correct!#print("size0,size1:",len(actions_for_curr_step),len(actions_for_curr_step[0]))#400,14#1228,7
-                    actions_populated = torch.all(actions_for_curr_step != 0,
-                                                  axis=1)  # it is a mask#operating on the dimension that is 14 or 7
-                    # print("actions_populated",actions_populated)
-                    # if(len(actions_populated)>0):#len(actions_populated)=400 always
-                    # print("actions_populated.shape:",actions_populated.shape)#(500)#torch.Size([1228]) also correct!#print("len(actions_populated),len(actions_populated[1]):",len(actions_populated),len(actions_populated[0]))#1228
-                    actions_for_curr_step = actions_for_curr_step[actions_populated]
-                    # if(len(actions_for_curr_step)>0):#actions_for_curr_step.shape=torch.Size([1-100, 14])#1-100 means from 1 to 100
-                    # print(f"t={tt},actions_for_curr_step.shape:",actions_for_curr_step.shape)#(1,14)-(100,14)#torch.Size([1228, 7]), correct!#print("tt,len(afcs),len(afcs[1]):",tt, len(actions_for_curr_step),actions_for_curr_step.shape)#,len(actions_for_curr_step[0]))
-                    # t,len(afcs),len(afcs[1]): 99 100 torch.Size([100, 14])#t,len(afcs),len(afcs[1]): 100 100 torch.Size([100, 14])
-                    # print("len(actions_for_curr_step)",len(actions_for_curr_step))
-                    exp_weights = np.exp(-k * np.arange(len(actions_for_curr_step)))
-                    # print("exp_weights.shape:", exp_weights.shape)  # (1,) to (100,)#(1,) to (100,)#correct!
-                    exp_weights = exp_weights / exp_weights.sum()  # normalize? Yeah, I think so
-                    exp_weights = torch.from_numpy(exp_weights).cuda().unsqueeze(dim=1)
-                    # print("exp_weights.shape2:", exp_weights.shape)  # (1,1) to (100,1)#(1,1) to (100,1), correct! because of the unsqueeze#
-                    raw_action = (actions_for_curr_step * exp_weights).sum(dim=0,
-                                                                           keepdim=True)  # kind of like convolution
-                    # print("raw_action.shape", raw_action.shape)  # (1,14)#torch.Size([1, 7]) correct!
-                else:
-                    raw_action = all_actions[:,
-                                 self.tt % query_frequency]  # really one piece after another! 100-100-100-100
-                action=raw_action
-                self.action = action#raw_action#
+                        raw_action = all_actions[:,
+                                    self.tt % query_frequency]  # really one piece after another! 100-100-100-100
+                    action=raw_action
+                    self.action = action#raw_action#
                 '''
                 robot_pose_array = PoseArray()
                 robot_pose_array.header.frame_id = "body"
@@ -394,9 +395,9 @@ if __name__ == "__main__":
     parser.add_argument('--ckpt_dir', action='store', type=str, help='ckpt_dir', required=True)#need to get checkpoint directory
     parser.add_argument('--policy_class', action='store', type=str, help='policy_class, capitalize', required=True,default='ACT')#normally ACT, but maybe can also try CNNMLP
     #parser.add_argument('--task_name', action='store', type=str, help='task_name', required=True)#this's important, and maybe can be incorporated with Shenhong's embedding!
-    parser.add_argument('--batch_size', action='store', type=int, help='batch_size', required=True)#if just for eval, then no need to use this!
+    #parser.add_argument('--batch_size', action='store', type=int, help='batch_size', required=True)#if just for eval, then no need to use this!
     #parser.add_argument('--seed', action='store', type=int, help='seed', required=True)#why need this during inference?
-    parser.add_argument('--num_epochs', action='store', type=int, help='num_epochs', required=True)#only for training
+    #parser.add_argument('--num_epochs', action='store', type=int, help='num_epochs', required=True)#only for training
     parser.add_argument('--lr', action='store', type=float, help='lr', required=True)#training only
 
     # for ACT
